@@ -1,21 +1,42 @@
 # Databricks notebook source
-#https://drive.google.com/file/d/1B9f9k4V1rt-3fAuh2jfYO6FL-yVkLOni/view
-# Exemplo de Spark --> slide 373 & 389
-# Exemplo de Spark ML --> slide 377
-#https://developers.google.com/machine-learning/crash-course/
-#correlacao
-#regressago lineal
-#k-means
-#mmlib
+# ==============================================================================
+# OBJETIVO: Cargar datos brutos de casos, limpiarlos, enriquecerlos con
+#           información geográfica y guardar una tabla base limpia.
+# ==============================================================================
 
 # COMMAND ----------
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, when, expr
+from functools import reduce
 
 # COMMAND ----------
 
 spark = SparkSession.builder.appName("workspace").getOrCreate()
+
+# COMMAND ----------
+
+df_municipios = spark.table("workspace.default.municipios")
+df_estados = spark.table("workspace.default.estados")
+
+df_geo_maestra = df_municipios.join(
+    df_estados,
+    df_municipios.codigo_uf == df_estados.codigo_uf,
+    "left"
+).select(
+    df_municipios.codigo_ibge,
+    df_municipios.nome.alias("nome_municipio"),
+    df_municipios.latitude.alias("lat_municipio"),
+    df_municipios.longitude.alias("lon_municipio"),
+    df_estados.uf.alias("uf"),
+    df_estados.nome.alias("nome_estado"),
+    df_estados.regiao
+)
+
+df_geo_preparado = df_geo_maestra.withColumn(
+    "municipio_id_6_digitos",
+    expr("substring(cast(codigo_ibge as string), 1, 6)")
+).dropDuplicates(["municipio_id_6_digitos"])
 
 # COMMAND ----------
 
@@ -54,9 +75,7 @@ df_limpio = df_all.select(
     col("ANO_NASC").alias("ano_nacimiento"),
     col("CS_SEXO").alias("sexo"),
     col("CS_GESTANT").alias("gestante"),
-    col("CS_RACA").alias("raza_etnia"),
     col("DT_INVEST").alias("fecha_investigacion"),
-    col("ID_OCUPA_N").alias("id_ocupacion"),
     col("DT_CHIK_S1").alias("fecha_chik_s1"),
     col("DT_CHIK_S2").alias("fecha_chik_s2"),
     col("RES_CHIKS1").alias("resultado_chik_1_id"),
@@ -65,7 +84,6 @@ df_limpio = df_all.select(
     col("RESUL_SORO").alias("resultado_serologia_id"),
     col("HOSPITALIZ").alias("fue_hospitalizado"),
     col("COUFINF").alias("id_uf_infeccion"),
-    col("COPAISINF").alias("id_pais_infeccion"),
     col("CLASSI_FIN").alias("clasificacion_final_id"),
     col("CRITERIO").alias("criterio_confirmacion_id"),
     col("DOENCA_TRA").alias("es_enfermedad_laboral"),
@@ -75,7 +93,6 @@ df_limpio = df_all.select(
     "edad",
     expr("try_cast(ano_notificacion as integer) - try_cast(ano_nacimiento as integer)")
 ).withColumn(
-    # 2. Corregir Fechas
     "fecha_notificacion", expr("try_to_date(fecha_notificacion, 'yyyyMMdd')")
 ).withColumn(
     "fecha_investigacion", expr("try_to_date(fecha_investigacion, 'yyyyMMdd')")
@@ -86,7 +103,6 @@ df_limpio = df_all.select(
 ).withColumn(
     "fecha_serologia", expr("try_to_date(fecha_serologia, 'yyyyMMdd')")
 ).withColumn(
-    # 3. Estandarizar valores categóricos
     "sexo", when(col("sexo") == 'M', "Masculino").when(col("sexo") == 'F', "Femenino").otherwise("Ignorado")
 ).withColumn(
     "evolucion_caso",
@@ -141,26 +157,9 @@ df_limpio = df_all.select(
 
 # COMMAND ----------
 
-df_municipios = spark.table("workspace.default.cod_municipios")
-
-df_municipios_preparado = df_municipios.withColumn(
-    # Extraemos los primeros 6 caracteres
-    "municipio_id_6_digitos",
-    col("cod_municipio").substr(1, 6)
-).select(
-    col("municipio_id_6_digitos"),
-    col("nome_municipio"),
-    col("Nome_UF")
-)
-
-# COMMAND ----------
-
-
-df_municipios_preparado = df_municipios_preparado.dropDuplicates(["municipio_id_6_digitos"])
-
 df_enriquecido = df_limpio.join(
-    df_municipios_preparado, # Ahora esta tabla tiene claves únicas
-    df_limpio.municipio_id_6_digitos == df_municipios_preparado.municipio_id_6_digitos,
+    df_geo_preparado,
+    "municipio_id_6_digitos",
     "left"
 )
 
@@ -170,13 +169,15 @@ df_final = df_enriquecido.select(
     # Seleccionamos las columnas deseadas en el orden final
     "fecha_notificacion",
     "ano_notificacion",
-    col("nome_municipio").alias("municipio_residencia"),
-    col("Nome_UF").alias("uf_residencia"),
+    "nome_municipio", 
+    "uf",             
+    "nome_estado",    
+    "regiao",         
+    "lat_municipio",  
+    "lon_municipio",  
     "edad",
     "sexo",
     "gestante",
-    "raza_etnia",
-    "id_ocupacion",
     "clasificacion_final",
     "criterio_confirmacion",
     "fue_hospitalizado",
@@ -191,23 +192,14 @@ df_final = df_enriquecido.select(
     "fecha_chik_s2",
     "resultado_chik_2",
     "id_uf_infeccion",
-    "id_pais_infeccion"
 ).na.fill({
-    "municipio_residencia": "Desconocido",
-    "uf_residencia": "Desconocido"
+    "nome_municipio": "Desconocido",
+    "uf": "Desconocido"
 })
 
 # COMMAND ----------
 
-display(df_final)
-
-# COMMAND ----------
-
-break
-
-# COMMAND ----------
-
 #escrever de novo na tabela
-df_final.write.mode("overwrite").saveAsTable("complete_dataset")
+df_final.write.mode("overwrite").saveAsTable("union_datasets")
 
 
