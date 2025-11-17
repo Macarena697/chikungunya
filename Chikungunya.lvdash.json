@@ -1,0 +1,1292 @@
+{
+  "datasets": [
+    {
+      "name": "dataset1",
+      "displayName": "complete_dataset_con_clima",
+      "queryLines": [
+        "SELECT * FROM workspace.default.casos_completos_com_clima;"
+      ]
+    },
+    {
+      "name": "4339e580",
+      "displayName": "predicciones_casos_confirmados_chikungunya",
+      "queryLines": [
+        "-- Parte 1: Datos Históricos Reales con Clima\r\n",
+        "SELECT\r\n",
+        "  date_trunc('month', data_notificacao) AS Mes,\r\n",
+        "  COUNT(*) AS Casos,\r\n",
+        "  NULL AS count_forecast,\r\n",
+        "  -- CAMBIO: Agregar promedio de temperatura y suma de precipitación\r\n",
+        "  AVG(temperatura_media) AS Temperatura_Media,\r\n",
+        "  SUM(precipitacao) AS Precipitacion_Total_Mensual\r\n",
+        "FROM\r\n",
+        "  workspace.default.casos_completos_com_clima\r\n",
+        "WHERE\r\n",
+        "  classificacao_final = 'Chikungunya'\r\n",
+        "GROUP BY\r\n",
+        "  1 -- Agrupa por la primera columna (Mes)\r\n",
+        "\r\n",
+        "UNION ALL\r\n",
+        "\r\n",
+        "-- Parte 2: Datos Futuros Predichos\r\n",
+        "SELECT\r\n",
+        "  Mes,\r\n",
+        "  NULL AS Casos,\r\n",
+        "  casos_previstos AS count_forecast,\r\n",
+        "  -- CAMBIO: Añadir columnas NULL para mantener la estructura de la tabla\r\n",
+        "  NULL AS Temperatura_Media,\r\n",
+        "  NULL AS Precipitacion_Total_Mensual\r\n",
+        "FROM\r\n",
+        "  workspace.default.previsoes_casos_chikungunya\r\n",
+        "\r\n",
+        "ORDER BY\r\n",
+        "  Mes ASC\r\n"
+      ]
+    },
+    {
+      "name": "71d4f997",
+      "displayName": "complete_dataset_con_clima (Forecasted)",
+      "queryLines": [
+        "WITH original_table AS (\n",
+        "    SELECT \n",
+        "  DATE_TRUNC(\"MONTH\", `data_notificacao`) AS fecha_notificacion,\n",
+        "  COUNT(*) AS count\n",
+        "FROM (\n",
+        "    SELECT * FROM workspace.default.casos_completos_com_clima\n",
+        ") GROUP BY 1\n",
+        "  ),\n",
+        "  dates AS (\n",
+        "    SELECT \n",
+        "      MAX(fecha_notificacion) AS max_date_column,\n",
+        "      MIN(fecha_notificacion) AS min_date_column,\n",
+        "      MAX_BY(count, fecha_notificacion) AS count\n",
+        "    FROM original_table\n",
+        "  ),\n",
+        "  forecast_table AS (\n",
+        "    SELECT \n",
+        "      fecha_notificacion,\n",
+        "      count_forecast,\n",
+        "      count_upper,\n",
+        "      count_lower,\n",
+        "      NULL AS count\n",
+        "    FROM AI_FORECAST(\n",
+        "      TABLE(original_table),\n",
+        "      horizon => (\n",
+        "        SELECT\n",
+        "          max_date_column + MAKE_DT_INTERVAL(CAST(FLOOR(DATEDIFF(max_date_column, min_date_column) * 0.5) AS INT), 0, 0, 0)\n",
+        "        FROM dates\n",
+        "      ),\n",
+        "      time_col => 'fecha_notificacion',\n",
+        "      value_col => 'count'\n",
+        "    )\n",
+        "  )\n",
+        "\n",
+        "  SELECT * FROM forecast_table\n",
+        "  UNION ALL\n",
+        "  SELECT\n",
+        "    fecha_notificacion,\n",
+        "    NULL AS count_forecast,\n",
+        "    NULL AS count_upper,\n",
+        "    NULL AS count_lower,\n",
+        "    count\n",
+        "  FROM original_table\n",
+        "    WHERE fecha_notificacion < (SELECT max_date_column FROM dates)\n",
+        "  UNION ALL\n",
+        "  SELECT\n",
+        "    max_date_column AS fecha_notificacion,\n",
+        "    count AS count_forecast,\n",
+        "    count AS count_upper,\n",
+        "    count AS count_lower,\n",
+        "    count\n",
+        "  FROM\n",
+        "    dates"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "page1",
+      "displayName": "Summary",
+      "layout": [
+        {
+          "widget": {
+            "name": "ec4b601c",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "dataset1",
+                  "fields": [
+                    {
+                      "name": "count(*)",
+                      "expression": "COUNT(`*`)"
+                    },
+                    {
+                      "name": "nome_estado",
+                      "expression": "`nome_estado`"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`classificacao_final` IN ('Chikungunya')"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "choropleth-map",
+              "encodings": {
+                "color": {
+                  "fieldName": "count(*)",
+                  "legend": {
+                    "hide": false,
+                    "hideTitle": false
+                  },
+                  "displayName": "Casos confirmados",
+                  "scale": {
+                    "type": "quantitative",
+                    "colorRamp": {
+                      "mode": "scheme",
+                      "scheme": "redyellowgreen"
+                    },
+                    "reverse": true
+                  }
+                },
+                "region": {
+                  "regionType": "mapbox-v4-admin",
+                  "admin0": {
+                    "type": "value",
+                    "value": "Brasil",
+                    "geographicRole": "admin0-name"
+                  },
+                  "admin1": {
+                    "fieldName": "nome_estado",
+                    "type": "field",
+                    "geographicRole": "admin1-name"
+                  }
+                }
+              },
+              "mark": {
+                "opacity": 0.68
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 9,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "c45f2f96",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "dataset1",
+                  "fields": [
+                    {
+                      "name": "count(*)",
+                      "expression": "COUNT(`*`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "count(*)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Total Notificações"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 1,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "15953da0",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "dataset1",
+                  "fields": [
+                    {
+                      "name": "count(classificacao_final)",
+                      "expression": "COUNT(`classificacao_final`)"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`classificacao_final` IN ('Chikungunya')"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "count(classificacao_final)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Casos Confirmados"
+              }
+            }
+          },
+          "position": {
+            "x": 1,
+            "y": 0,
+            "width": 1,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "95e73506",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "dataset1",
+                  "fields": [
+                    {
+                      "name": "count(classificacao_final)",
+                      "expression": "COUNT(`classificacao_final`)"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`classificacao_final` IS NULL OR `classificacao_final` NOT IN ('Chikungunya')"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "count(classificacao_final)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Casos Não confirmados"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 0,
+            "width": 1,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "86f20b8b",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "dataset1",
+                  "fields": [
+                    {
+                      "name": "count(classificacao_final)",
+                      "expression": "COUNT(`classificacao_final`)"
+                    },
+                    {
+                      "name": "classificacao_final",
+                      "expression": "`classificacao_final`"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`classificacao_final` IN ('Chikungunya', 'Descartado', 'Outro/Em Investigação')"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "funnel",
+              "encodings": {
+                "x": {
+                  "fieldName": "count(classificacao_final)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Total"
+                },
+                "y": {
+                  "fieldName": "classificacao_final",
+                  "axis": {
+                    "hideLabels": false
+                  },
+                  "displayName": "Resultado",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "extra": [
+                  {
+                    "fieldName": "count(classificacao_final)"
+                  }
+                ],
+                "label": {
+                  "show": true
+                }
+              },
+              "mark": {
+                "colors": [
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 1
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 2
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 3
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 4
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 5
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 6
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 7
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 8
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 9
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 10
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Classificação final dos casos"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 0,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "f1aae3b9",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "dataset1",
+                  "fields": [
+                    {
+                      "name": "count(sexo)",
+                      "expression": "COUNT(`sexo`)"
+                    },
+                    {
+                      "name": "sexo",
+                      "expression": "`sexo`"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`classificacao_final` IN ('Chikungunya')"
+                    },
+                    {
+                      "expression": "`sexo` IS NULL OR `sexo` NOT IN ('Ignorado')"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "pie",
+              "encodings": {
+                "angle": {
+                  "fieldName": "count(sexo)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "."
+                },
+                "color": {
+                  "fieldName": "sexo",
+                  "displayName": "Genero",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "Femenino",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 8
+                        }
+                      },
+                      {
+                        "value": "Masculino",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 1
+                        }
+                      },
+                      {
+                        "value": "Feminino",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 10
+                        }
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "frame": {
+                "title": "Casos por gênero",
+                "showTitle": true,
+                "showDescription": false
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 3,
+            "width": 1,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "180cef29",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "dataset1",
+                  "fields": [
+                    {
+                      "name": "regiao",
+                      "expression": "`regiao`"
+                    },
+                    {
+                      "name": "count(classificacao_final)",
+                      "expression": "COUNT(`classificacao_final`)"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`classificacao_final` IN ('Chikungunya')"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "regiao",
+                  "displayName": "Region",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "y-reversed"
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "count(classificacao_final)",
+                  "displayName": "Total",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "regiao",
+                  "displayName": "Region",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "Sudeste",
+                        "color": "#87463F"
+                      },
+                      {
+                        "value": "Nordeste",
+                        "color": "#6D634D"
+                      }
+                    ]
+                  }
+                }
+              },
+              "frame": {
+                "title": "Casos por região",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 9,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "0b9f9f6b",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "dataset1",
+                  "fields": [
+                    {
+                      "name": "idade",
+                      "expression": "`idade`"
+                    },
+                    {
+                      "name": "count(classificacao_final)",
+                      "expression": "COUNT(`classificacao_final`)"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`classificacao_final` IN ('Chikungunya')"
+                    },
+                    {
+                      "expression": "IN_RANGE(`idade`, NULL, 90)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "scatter",
+              "encodings": {
+                "x": {
+                  "fieldName": "idade",
+                  "displayName": "Edad",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "count(classificacao_final)",
+                  "axis": {
+                    "hideLabels": false,
+                    "hideTitle": true
+                  },
+                  "displayName": "Cantidad",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "frame": {
+                "title": "Casos confirmados por faixa etária",
+                "showTitle": true
+              },
+              "mark": {
+                "colors": [
+                  {
+                    "themeColorType": "fontColor"
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 2
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 3
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 4
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 5
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 6
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 7
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 8
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 9
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 10
+                  }
+                ],
+                "size": -0.6
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 3,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "dc510df5",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "dataset1",
+                  "fields": [
+                    {
+                      "name": "count(classificacao_final)",
+                      "expression": "COUNT(`classificacao_final`)"
+                    },
+                    {
+                      "name": "classificacao_final",
+                      "expression": "`classificacao_final`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "pie",
+              "encodings": {
+                "angle": {
+                  "fieldName": "count(classificacao_final)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "."
+                },
+                "color": {
+                  "fieldName": "classificacao_final",
+                  "displayName": "Clasificacion",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "Chikungunya",
+                        "color": "#AD362A"
+                      },
+                      {
+                        "value": "Descartado",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 3
+                        }
+                      },
+                      {
+                        "value": "Otro/En Investigación",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 2
+                        }
+                      },
+                      {
+                        "value": "Feminino",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 10
+                        }
+                      },
+                      {
+                        "value": "Masculino",
+                        "color": {
+                          "themeColorType": "selectionColor"
+                        }
+                      },
+                      {
+                        "value": "Outro/Em Investigação",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 5
+                        }
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Percentagem de resultados"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 2,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "71b1c40c",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "71d4f997",
+                  "fields": [
+                    {
+                      "name": "fecha_notificacion",
+                      "expression": "`fecha_notificacion`"
+                    },
+                    {
+                      "name": "count",
+                      "expression": "`count`"
+                    },
+                    {
+                      "name": "count_forecast",
+                      "expression": "`count_forecast`"
+                    },
+                    {
+                      "name": "count_upper",
+                      "expression": "`count_upper`"
+                    },
+                    {
+                      "name": "count_lower",
+                      "expression": "`count_lower`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "forecast-line",
+              "encodings": {
+                "x": {
+                  "fieldName": "fecha_notificacion",
+                  "displayName": "Fecha",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "original": {
+                    "fieldName": "count",
+                    "displayName": "Casos"
+                  },
+                  "prediction": {
+                    "fieldName": "count_forecast",
+                    "displayName": "."
+                  },
+                  "predictionLower": {
+                    "fieldName": "count_lower",
+                    "displayName": "."
+                  },
+                  "predictionUpper": {
+                    "fieldName": "count_upper",
+                    "displayName": "."
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Previsão feita no Databrick"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 15,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "e5f8b660",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4339e580",
+                  "fields": [
+                    {
+                      "name": "monthly(Mes)",
+                      "expression": "DATE_TRUNC(\"MONTH\", `Mes`)"
+                    },
+                    {
+                      "name": "Casos",
+                      "expression": "`Casos`"
+                    },
+                    {
+                      "name": "count_forecast",
+                      "expression": "`count_forecast`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "forecast-line",
+              "encodings": {
+                "x": {
+                  "fieldName": "monthly(Mes)",
+                  "displayName": "Fecha",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "original": {
+                    "fieldName": "Casos",
+                    "displayName": "Casos"
+                  },
+                  "prediction": {
+                    "fieldName": "count_forecast",
+                    "displayName": "."
+                  },
+                  "axis": {
+                    "hideLabels": false,
+                    "hideGrid": false
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Previsão feita com modelo de ML"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 21,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "2f773d45",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4339e580",
+                  "fields": [
+                    {
+                      "name": "monthly(Mes)",
+                      "expression": "DATE_TRUNC(\"MONTH\", `Mes`)"
+                    },
+                    {
+                      "name": "Casos",
+                      "expression": "`Casos`"
+                    },
+                    {
+                      "name": "Precipitacion_Total_Mensual",
+                      "expression": "`Precipitacion_Total_Mensual`"
+                    },
+                    {
+                      "name": "Temperatura_Media",
+                      "expression": "`Temperatura_Media`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "combo",
+              "encodings": {
+                "x": {
+                  "fieldName": "monthly(Mes)",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "primary": {
+                    "fields": [
+                      {
+                        "fieldName": "Casos"
+                      }
+                    ],
+                    "scale": {
+                      "type": "quantitative"
+                    },
+                    "axis": {
+                      "hideGrid": true,
+                      "hideLabels": true
+                    }
+                  },
+                  "secondary": {
+                    "fields": [
+                      {
+                        "fieldName": "Precipitacion_Total_Mensual",
+                        "displayName": "Lluvia"
+                      },
+                      {
+                        "fieldName": "Temperatura_Media",
+                        "displayName": "Temperatura"
+                      }
+                    ],
+                    "scale": {
+                      "type": "quantitative",
+                      "fn": {
+                        "type": "symlog"
+                      }
+                    },
+                    "axis": {
+                      "hideGrid": true,
+                      "hideLabels": true,
+                      "hideTitle": true
+                    }
+                  }
+                },
+                "label": {
+                  "show": false
+                }
+              },
+              "mark": {
+                "colors": [
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 6
+                  },
+                  {
+                    "themeColorType": "selectionColor"
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 2
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 4
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 5
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 6
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 7
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 8
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 9
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 10
+                  }
+                ],
+                "layout": "group"
+              },
+              "frame": {
+                "title": "Casos x Temperatura x Precipitação",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 27,
+            "width": 6,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "0f2fbc55",
+      "displayName": "Filtros globais",
+      "layout": [
+        {
+          "widget": {
+            "name": "0dc51e6d",
+            "queries": [
+              {
+                "name": "dashboards/01f0c3cfbaf41a958fa07c53b61590f0/datasets/01f0c3cfbaf51120955ebb3006a916c5_ano_notificacao",
+                "query": {
+                  "datasetName": "dataset1",
+                  "fields": [
+                    {
+                      "name": "ano_notificacao",
+                      "expression": "`ano_notificacao`"
+                    },
+                    {
+                      "name": "ano_notificacao_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "ano_notificacao",
+                    "queryName": "dashboards/01f0c3cfbaf41a958fa07c53b61590f0/datasets/01f0c3cfbaf51120955ebb3006a916c5_ano_notificacao"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Ano"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "eb3aa64d",
+            "queries": [
+              {
+                "name": "dashboards/01f0c3cfbaf41a958fa07c53b61590f0/datasets/01f0c3cfbaf51120955ebb3006a916c5_regiao",
+                "query": {
+                  "datasetName": "dataset1",
+                  "fields": [
+                    {
+                      "name": "regiao",
+                      "expression": "`regiao`"
+                    },
+                    {
+                      "name": "regiao_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "regiao",
+                    "queryName": "dashboards/01f0c3cfbaf41a958fa07c53b61590f0/datasets/01f0c3cfbaf51120955ebb3006a916c5_regiao"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Region"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "bd10e357",
+            "queries": [
+              {
+                "name": "dashboards/01f0c3cfbaf41a958fa07c53b61590f0/datasets/01f0c3cfbaf51120955ebb3006a916c5_nome_estado",
+                "query": {
+                  "datasetName": "dataset1",
+                  "fields": [
+                    {
+                      "name": "nome_estado",
+                      "expression": "`nome_estado`"
+                    },
+                    {
+                      "name": "nome_estado_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "nome_estado",
+                    "queryName": "dashboards/01f0c3cfbaf41a958fa07c53b61590f0/datasets/01f0c3cfbaf51120955ebb3006a916c5_nome_estado"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Estado"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "577014b6",
+            "queries": [
+              {
+                "name": "dashboards/01f0c3cfbaf41a958fa07c53b61590f0/datasets/01f0c3cfbaf51120955ebb3006a916c5_nome_municipio",
+                "query": {
+                  "datasetName": "dataset1",
+                  "fields": [
+                    {
+                      "name": "nome_municipio",
+                      "expression": "`nome_municipio`"
+                    },
+                    {
+                      "name": "nome_municipio_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "nome_municipio",
+                    "queryName": "dashboards/01f0c3cfbaf41a958fa07c53b61590f0/datasets/01f0c3cfbaf51120955ebb3006a916c5_nome_municipio"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Municipio"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "width": 1,
+            "height": 2
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_GLOBAL_FILTERS"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "genieSpace": {
+      "isEnabled": false
+    },
+    "applyModeEnabled": false
+  }
+}
