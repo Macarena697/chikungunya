@@ -11,39 +11,30 @@
       "name": "4339e580",
       "displayName": "predicciones_casos_confirmados_chikungunya",
       "queryLines": [
-        "-- =============================================================================\r\n",
-        "-- CONSULTA PARA EL GRÁFICO ESPECIAL \"LINHA (PREVISÃO)\" DE DATABRICKS\r\n",
-        "-- Crea columnas separadas para valores reales y de previsión en una sola tabla.\r\n",
-        "-- =============================================================================\r\n",
-        "\r\n",
         "-- Parte 1: Datos Históricos Reales\r\n",
         "SELECT\r\n",
-        "  date_trunc('week', fecha_notificacion) AS Semana,\r\n",
-        "  COUNT(*) AS Casos, -- Columna para el campo \"Original\"\r\n",
-        "  NULL AS count_forecast, -- Columna para el campo \"Previsão\" (vacía para datos históricos)\r\n",
-        "  NULL AS count_upper, -- Columna para el campo \"Previsão superior\"\r\n",
-        "  NULL AS count_lower -- Columna para el campo \"Predição inferior\"\r\n",
+        "  date_trunc('month', fecha_notificacion) AS Mes,\r\n",
+        "  COUNT(*) AS Casos, \r\n",
+        "  NULL AS count_forecast\r\n",
         "FROM\r\n",
         "  workspace.default.complete_dataset_con_clima\r\n",
         "WHERE\r\n",
         "  clasificacion_final = 'Chikungunya'\r\n",
         "GROUP BY\r\n",
-        "  1 -- Agrupa por la primera columna (Semana)\r\n",
+        "  1 -- Agrupa por la primera columna (Mes)\r\n",
         "\r\n",
         "UNION ALL\r\n",
         "\r\n",
         "-- Parte 2: Datos Futuros Predichos\r\n",
         "SELECT\r\n",
-        "  Semana,\r\n",
-        "  NULL AS Casos, -- Columna \"Original\" vacía para las predicciones\r\n",
-        "  casos_previstos AS count_forecast, -- Columna \"Previsão\" con los datos del modelo\r\n",
-        "  NULL AS count_upper,\r\n",
-        "  NULL AS count_lower\r\n",
+        "  Mes,\r\n",
+        "  NULL AS Casos,\r\n",
+        "  casos_previstos AS count_forecast\r\n",
         "FROM\r\n",
         "  workspace.default.predicciones_casos_confirmados_chikungunya\r\n",
         "\r\n",
         "ORDER BY\r\n",
-        "  Semana ASC\r\n"
+        "  Mes ASC\r\n"
       ]
     },
     {
@@ -548,6 +539,7 @@
               "encodings": {
                 "x": {
                   "fieldName": "regiao",
+                  "displayName": "Region",
                   "scale": {
                     "type": "categorical",
                     "sort": {
@@ -557,12 +549,14 @@
                 },
                 "y": {
                   "fieldName": "count(clasificacion_final)",
+                  "displayName": "Total",
                   "scale": {
                     "type": "quantitative"
                   }
                 },
                 "color": {
                   "fieldName": "regiao",
+                  "displayName": "Region",
                   "scale": {
                     "type": "categorical",
                     "mappings": [
@@ -820,6 +814,7 @@
               "encodings": {
                 "x": {
                   "fieldName": "fecha_notificacion",
+                  "displayName": "Fecha",
                   "scale": {
                     "type": "temporal"
                   }
@@ -830,21 +825,25 @@
                   },
                   "original": {
                     "fieldName": "count",
-                    "displayName": "Count of count"
+                    "displayName": "Casos"
                   },
                   "prediction": {
                     "fieldName": "count_forecast",
-                    "displayName": "Count of count_forecast"
-                  },
-                  "predictionUpper": {
-                    "fieldName": "count_upper",
-                    "displayName": "Count of count_upper"
+                    "displayName": "."
                   },
                   "predictionLower": {
                     "fieldName": "count_lower",
-                    "displayName": "Count of count_lower"
+                    "displayName": "."
+                  },
+                  "predictionUpper": {
+                    "fieldName": "count_upper",
+                    "displayName": "."
                   }
                 }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Prediccion hecha en databrick"
               }
             }
           },
@@ -865,8 +864,8 @@
                   "datasetName": "4339e580",
                   "fields": [
                     {
-                      "name": "Semana",
-                      "expression": "`Semana`"
+                      "name": "monthly(Mes)",
+                      "expression": "DATE_TRUNC(\"MONTH\", `Mes`)"
                     },
                     {
                       "name": "Casos",
@@ -886,7 +885,8 @@
               "widgetType": "forecast-line",
               "encodings": {
                 "x": {
-                  "fieldName": "Semana",
+                  "fieldName": "monthly(Mes)",
+                  "displayName": "Fecha",
                   "scale": {
                     "type": "temporal"
                   }
@@ -897,13 +897,17 @@
                   },
                   "original": {
                     "fieldName": "Casos",
-                    "displayName": "Count of count"
+                    "displayName": "Casos"
                   },
                   "prediction": {
                     "fieldName": "count_forecast",
-                    "displayName": "Count of count_forecast"
+                    "displayName": "."
                   }
                 }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Prediccion hecha con modelo ML"
               }
             }
           },
