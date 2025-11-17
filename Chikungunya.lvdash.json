@@ -11,11 +11,14 @@
       "name": "4339e580",
       "displayName": "predicciones_casos_confirmados_chikungunya",
       "queryLines": [
-        "-- Parte 1: Datos Históricos Reales\r\n",
+        "-- Parte 1: Datos Históricos Reales con Clima\r\n",
         "SELECT\r\n",
         "  date_trunc('month', fecha_notificacion) AS Mes,\r\n",
-        "  COUNT(*) AS Casos, \r\n",
-        "  NULL AS count_forecast\r\n",
+        "  COUNT(*) AS Casos,\r\n",
+        "  NULL AS count_forecast,\r\n",
+        "  -- CAMBIO: Agregar promedio de temperatura y suma de precipitación\r\n",
+        "  AVG(temperatura_media) AS Temperatura_Media,\r\n",
+        "  SUM(precipitacion) AS Precipitacion_Total_Mensual\r\n",
         "FROM\r\n",
         "  workspace.default.complete_dataset_con_clima\r\n",
         "WHERE\r\n",
@@ -29,7 +32,10 @@
         "SELECT\r\n",
         "  Mes,\r\n",
         "  NULL AS Casos,\r\n",
-        "  casos_previstos AS count_forecast\r\n",
+        "  casos_previstos AS count_forecast,\r\n",
+        "  -- CAMBIO: Añadir columnas NULL para mantener la estructura de la tabla\r\n",
+        "  NULL AS Temperatura_Media,\r\n",
+        "  NULL AS Precipitacion_Total_Mensual\r\n",
         "FROM\r\n",
         "  workspace.default.predicciones_casos_confirmados_chikungunya\r\n",
         "\r\n",
@@ -902,6 +908,10 @@
                   "prediction": {
                     "fieldName": "count_forecast",
                     "displayName": "."
+                  },
+                  "axis": {
+                    "hideLabels": false,
+                    "hideGrid": false
                   }
                 }
               },
@@ -914,6 +924,146 @@
           "position": {
             "x": 0,
             "y": 21,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "2f773d45",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4339e580",
+                  "fields": [
+                    {
+                      "name": "monthly(Mes)",
+                      "expression": "DATE_TRUNC(\"MONTH\", `Mes`)"
+                    },
+                    {
+                      "name": "Casos",
+                      "expression": "`Casos`"
+                    },
+                    {
+                      "name": "Precipitacion_Total_Mensual",
+                      "expression": "`Precipitacion_Total_Mensual`"
+                    },
+                    {
+                      "name": "Temperatura_Media",
+                      "expression": "`Temperatura_Media`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "combo",
+              "encodings": {
+                "x": {
+                  "fieldName": "monthly(Mes)",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "primary": {
+                    "fields": [
+                      {
+                        "fieldName": "Casos"
+                      }
+                    ],
+                    "scale": {
+                      "type": "quantitative"
+                    },
+                    "axis": {
+                      "hideGrid": true,
+                      "hideLabels": true
+                    }
+                  },
+                  "secondary": {
+                    "fields": [
+                      {
+                        "fieldName": "Precipitacion_Total_Mensual",
+                        "displayName": "Lluvia"
+                      },
+                      {
+                        "fieldName": "Temperatura_Media",
+                        "displayName": "Temperatura"
+                      }
+                    ],
+                    "scale": {
+                      "type": "quantitative",
+                      "fn": {
+                        "type": "symlog"
+                      }
+                    },
+                    "axis": {
+                      "hideGrid": true,
+                      "hideLabels": true,
+                      "hideTitle": true
+                    }
+                  }
+                },
+                "label": {
+                  "show": false
+                }
+              },
+              "frame": {
+                "title": "Casos X Temperatura X Lluvia",
+                "showTitle": true
+              },
+              "mark": {
+                "colors": [
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 6
+                  },
+                  {
+                    "themeColorType": "selectionColor"
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 2
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 4
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 5
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 6
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 7
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 8
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 9
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 10
+                  }
+                ],
+                "layout": "group"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 27,
             "width": 6,
             "height": 6
           }
